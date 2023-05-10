@@ -9,6 +9,7 @@ mutable struct Agente <: AbstractAgent
     status::String # B - Buyer / S - Seller #
     sold::Bool
     runs::Int
+    f_util::String # A - "Avesso ao risco" / N - "Neutro ao risco" / P - "Propenso ao risco" #
 end
 
 function initialize(;n_ag= 12)
@@ -24,14 +25,21 @@ function initialize(;n_ag= 12)
         util = ((qtde*10)^(acao)) * (cash^(din))
         sold = false
         runs = 0
+        if i % 3 == 1
+            f_util = "A"
+        elseif i % 3 == 2
+            f_util = "P"
+        else
+            f_util = "N"
+        end
         if cash - preco_compra > 0
             if (((qtde+1)*preco_compra)^(acao))*((cash-preco_compra)^(din)) > util
-                add_agent!(Agente(id, qtde, cash, preco_compra, util, "B", sold, runs),model)
+                add_agent!(Agente(id, qtde, cash, preco_compra, util, "B", sold, runs, f_util),model)
             else
-                add_agent!(Agente(id, qtde, cash, preco_compra, util, "S", sold, runs),model)
+                add_agent!(Agente(id, qtde, cash, preco_compra, util, "S", sold, runs, f_util),model)
             end
         else
-            add_agent!(Agente(id, qtde, cash, preco_compra, util, "S", sold, runs),model)
+            add_agent!(Agente(id, qtde, cash, preco_compra, util, "S", sold, runs, f_util),model)
         end
     end
     return model
@@ -44,9 +52,21 @@ function utilidade(agente::Agente,atual::Bool)
         preco = agente.preco
     end
     if atual == true
-        utilidade = ((agente.qtde*preco)^(acao))*((agente.cash)^(din))
+        if agente.f_util == "A"
+            utilidade = ((agente.qtde*preco)^(acao-1/4))*((agente.cash)^(din+1/4))
+        elseif agente.f_util == "P"
+            utilidade = ((agente.qtde*preco)^(acao+1/4))*((agente.cash)^(din-1/4))
+        else
+            utilidade = ((agente.qtde*preco)^(acao))*((agente.cash)^(din))
+        end
     elseif length(sellers()) != 0
-        utilidade = (((agente.qtde+1)*preco)^(acao))*((agente.cash-sellers()[1][2])^(din))
+        if agente.f_util == "A"
+            utilidade = (((agente.qtde+1)*preco)^(acao-1/4))*((agente.cash-sellers()[1][2])^(din+1/4))
+        elseif agente.f_util == "P"
+            utilidade = (((agente.qtde+1)*preco)^(acao+1/4))*((agente.cash-sellers()[1][2])^(din-1/4))
+        else
+            utilidade = (((agente.qtde+1)*preco)^(acao))*((agente.cash-sellers()[1][2])^(din))
+        end
     else
         utilidade = 0
     end
@@ -76,11 +96,29 @@ function sellers()
 end
 
 function new_util(x::Agente)
-    cashutil = ((x.qtde*x.preco)^(acao))*(x.cash^(din))
+    if x.f_util == "A"
+        cashutil = ((x.qtde*x.preco)^(acao-1/4))*(x.cash^(din+1/4))
+    elseif x.f_util == "P"
+        cashutil = ((x.qtde*x.preco)^(acao+1/4))*(x.cash^(din-1/4))
+    else
+        cashutil = ((x.qtde*x.preco)^(acao))*(x.cash^(din))
+    end
     if length(sellers()) > 0 && x.cash > sellers()[1][2]
-        stockutil = (((x.qtde+1)*x.preco)^(acao)) * ((x.cash-sellers()[1][2])^(din))
+        if x.f_util == "A"
+            stockutil = (((x.qtde+1)*x.preco)^(acao-1/4)) * ((x.cash-sellers()[1][2])^(din+1/4))
+        elseif x.f_util == "P"
+            stockutil = (((x.qtde+1)*x.preco)^(acao+1/4)) * ((x.cash-sellers()[1][2])^(din-1/4))
+        else
+            stockutil = (((x.qtde+1)*x.preco)^(acao)) * ((x.cash-sellers()[1][2])^(din))
+        end
     elseif x.cash > x.preco
-        stockutil = (((x.qtde+1)*x.preco)^(acao)) * ((x.cash-x.preco)^(din))
+        if x.f_util == "A"
+            stockutil = (((x.qtde+1)*x.preco)^(acao-1/4)) * ((x.cash-x.preco)^(din+1/4))
+        elseif x.f_util == "P"
+            stockutil = (((x.qtde+1)*x.preco)^(acao+1/4)) * ((x.cash-x.preco)^(din-1/4))
+        else
+            stockutil = (((x.qtde+1)*x.preco)^(acao)) * ((x.cash-x.preco)^(din))
+        end
     else
         stockutil = 0
     end
@@ -185,7 +223,7 @@ end
 global acao = 2/4
 global din = 2/4
 n_ag = 100
-per = 2000
+per = 20000
 
 # Inicializar o modelo
 model = initialize(;n_ag= n_ag)
