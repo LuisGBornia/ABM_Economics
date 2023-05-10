@@ -22,9 +22,6 @@ function initialize(;n_ag= 12)
         prod_qtde += qtde
         cash = rand(5000:10000)
         preco_compra = rand(10:100)
-        util = ((qtde*10)^(acao)) * (cash^(din))
-        sold = false
-        runs = 0
         if i % 3 == 1
             f_util = "A"
         elseif i % 3 == 2
@@ -32,6 +29,15 @@ function initialize(;n_ag= 12)
         else
             f_util = "N"
         end
+        if f_util == "A"
+            util = ((qtde*preco_compra)^(acao-1/4)) * (cash^(din+1/4))
+        elseif f_util == "P"
+            util = ((qtde*preco_compra)^(acao+1/4)) * (cash^(din-1/4))
+        else
+            util = ((qtde*preco_compra)^(acao-1/4)) * (cash^(din+1/4))
+        end
+        sold = false
+        runs = 0
         if cash - preco_compra > 0
             if (((qtde+1)*preco_compra)^(acao))*((cash-preco_compra)^(din)) > util
                 add_agent!(Agente(id, qtde, cash, preco_compra, util, "B", sold, runs, f_util),model)
@@ -222,8 +228,8 @@ end
 # Características 
 global acao = 2/4
 global din = 2/4
-n_ag = 100
-per = 20000
+n_ag = 12
+per = 2000
 
 # Inicializar o modelo
 model = initialize(;n_ag= n_ag)
