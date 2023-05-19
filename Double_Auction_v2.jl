@@ -10,14 +10,18 @@ using Agents, Graphs, Plots, GraphPlot, DataFrames, Statistics
     sit::String
 end
 
-function avesso(cash::Float64, stock::Int64)
-    return log(cash^.5*stock^.5)
-end
-function neutro(cash::Float64, stock::Int64)
-    return cash^.5*stock^.5
-end
-function propenso(cash::Float64, stock::Int64)
-    return exp(cash^.5*stock^.5)
+function utilidade(agente::Investidor)
+    w = agente.cash*agente.stock*preco_medio(model)
+    w = exp(l*w)
+    if agente.func == "avesso"
+        return log(w)
+    elseif agente.func == "neutro"
+        return w
+    elseif agente.func == "propenso"
+        return (w)^2
+    else
+        return error("Agente com função diferente de avesso/neutro/propenso")
+    end
 end
 
 function initialize_model(;n_agent=12::Int)
@@ -25,98 +29,145 @@ function initialize_model(;n_agent=12::Int)
     for i in 1:n_agent
         cash = 1000.00
         stock = 100
-        util = 100.0
-        preco = round(cash/stock, digits=2)
+        preco = rand(10:0.01:20)
+        util = (l*cash*stock*preco)
         if i % 3 == 0
             func = "avesso"
-            sit = avesso(cash, stock) > util ? "comprador" : "vendedor"
+            preco = preco > cash ? cash : preco
+            local util_stock = log(l*(cash-preco)*(preco*stock+1))
+            util = log(util)
         elseif i % 3 == 1
             func = "propenso"
-            sit = propenso(cash, stock) > util ? "comprador" : "vendedor"
+            local util_stock = exp(l*(cash-preco)*(preco*stock+1))
+            util = exp(util)
         else
             func = "neutro"
-            sit = neutro(cash, stock) > util ? "comprador" : "vendedor"
+            local util_stock = (l*(cash-preco)*(preco*stock+1))
+            util = (util)
         end
-        add_agent!(model, i,cash, stock, util, preco, func, sit)
+        sit =  util_stock > util ? "comprador" : "vendedor"
+        add_agent!(model, i, cash, stock, util, preco, func, sit) # i = posição
     end
     return model
 end
 
 function agent_step!(agente::Investidor, model::ABM)
-    if utilidade_stock(agente, model)
-        agente.cash -= preco_medio(model)
-        agente.stock += 1
-        agente.preco = round(agente.cash/agente.stock, digits=2)
-    elseif utilidade_cash(agente, model) && agente.stock >= 1
-        agente.cash += preco_medio(model)
-        agente.stock -= 1
-        agente.preco = round(agente.cash/agente.stock, digits=2)
+    if utilidade_adicional(agente)
+        cash = agente.cash
+        stock = agente.stock
+        if agente.func == "avesso"
+            util_cash = log((cash+preco_medio(model)) * (preco_medio(model)*(stock-1)))
+            util_stock = log((cash-preco_medio(model)) * (preco_medio(model)*(stock+1)))
+        elseif agente.func == "neutro"
+            util_cash = (cash+preco_medio(model)) * (preco_medio(model)*(stock-1))
+            util_stock = (cash-preco_medio(model)) * (preco_medio(model)*(stock+1))
+        elseif agente.func == "propenso"
+            util_cash = exp((cash+preco_medio(model)) * (preco_medio(model)*(stock-1)))
+            util_stock = exp((cash-preco_medio(model)) * (preco_medio(model)*(stock+1)))
+        end    
+        if util_cash > util_stock
+            println("Agente: $(agente.id) Vendeu 1 ação ($(agente.func)))")
+            agente.cash += preco_medio(model)
+            agente.stock -= 1
+        elseif util_stock > util_cash
+            println("Agente: $(agente.id) Comprou 1 ação ($(agente.func)))")
+            agente.cash -= preco_medio(model)
+            agente.stock += 1
+        else
+            println("Agente: $(agente.id) Não negociou")
+        end
     end
-    return agente
 end
 
 function model_step(model::ABM)
     println("Model step")
     for agente in allagents(model)
-        cash = agente.cash
-        stock = agente.stock
+        agente.util = utilidade(agente)
+        util_stock = (agente.cash-preco_medio(model)) * (preco_medio(model)*(agente.stock+1))
+        util_cash = (agente.cash+preco_medio(model)) * (preco_medio(model)*(agente.stock-1))
         if agente.func == "avesso"
-            x = avesso(cash, stock)
+            util_cash = log(util_cash)
+            util_stock = log(util_stock)
+            if util_stock > agente.util
+                agente.sit =  "comprador"
+            else
+                agente.sit = "vendedor"
+            end
+        elseif agente.func == "neutro"
+            util_cash = (util_cash)
+            util_stock = (util_stock)
+            if util_stock > agente.util
+                agente.sit =  "comprador"
+            else
+                agente.sit = "vendedor"
+            end
         elseif agente.func == "propenso"
-            x = propenso(cash, stock)
-        else
-            x = neutro(cash, stock)
+            util_cash = exp(util_cash)
+            util_stock = exp(util_stock)
+            if util_stock > agente.util
+                agente.sit =  "comprador"
+            elseif util_cash > agente.util
+                agente.sit = "vendedor"
+            else
+                agente.sit = "neutro"
+            end
         end
-        agente.sit = agente.util > x ? "comprador" : "vendedor" 
-        agente.util = x
-        agente.preco = round(cash/stock, digits=2)
+        ct = compradores(model)
+        Vt = vendedores(model)
+        agente.preco = agente.preco*exp((ct-Vt)/ß)
     end
 end
 
-function utilidade_stock(agente::Investidor, model::ABM)
+function utilidade_adicional(agente::Investidor)
     cash = agente.cash
     stock = agente.stock
-    if agente.cash - preco_medio(model) > 0
-        if agente.func == "avesso"
-            x = avesso(cash, stock)
-            y = avesso((cash-preco_medio(model)), (stock+1))
-        elseif agente.func == "propenso"
-            x = propenso(cash, stock)
-            y = propenso((cash-preco_medio(model)), (stock+1))
-        elseif agente.cash - preco_medio(model) > 0
-            x = neutro(cash, stock)
-            y = neutro((cash-preco_medio(model)), (stock+1))
-        else
-            x = 1
-            y = 0
-        end
-        return y > x
+    util = agente.util
+    util_cash = (cash+preco_medio(model)) * (preco_medio(model)*(stock-1))
+    util_stock = (cash-preco_medio(model)) * (preco_medio(model)*(stock+1))
+    if agente.func == "avesso"
+        util_cash = log(util_cash)
+        util_stock = log(util_stock)
+    elseif agente.func == "neutro"
+        util_cash = util_cash
+        util_stock = util_stock
+    elseif agente.func == "propenso"
+        util_cash = exp(util_cash)
+        util_stock = exp(util_stock)
+    end
+    if util_cash > util || util_stock > util
+        println("Utilidade pode aumentar")
+        return true
     else
-        println("Agente com menos dinheiro que o preço médio")
         return false
     end
 end
 
-function utilidade_cash(agente::Investidor, model::ABM)
-    cash = agente.cash
-    stock = agente.stock
-    if agente.func == "avesso"
-        x = avesso(cash, stock)
-        y = avesso((cash+preco_medio(model)), (stock-1))
-    elseif agente.func == "propenso"
-        x = propenso(cash, stock)
-        y = propenso((cash+preco_medio(model)), (stock-1))
-    else
-        x = neutro(cash, stock)
-        y = neutro((cash+preco_medio(model)), (stock-1))
-    end
-    return y > x
-end
-
 function preco_medio(model::ABM)
     list = []
-    for agente in model.agents
-        push!(list, [agente[2].id, agente[2].preco])
+    for agente in allagents(model)
+        push!(list, [agente.id, agente.preco])
     end
     return round(mean(list)[2], digits=2)
 end
+
+function compradores(model::ABM)
+    count = 0
+    for agente in allagents(model)
+        if agente.sit == "comprador"
+            count += 1
+        end
+    end
+    return count
+end
+
+function vendedores(model::ABM)
+    count = 0
+    for agente in allagents(model)
+        if agente.sit == "vendedor"
+            count += 1
+        end
+    end
+    return count
+end
+global l = 0.00001
+global ß = 100
