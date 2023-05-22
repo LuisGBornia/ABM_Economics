@@ -18,7 +18,7 @@ function utilidade(agente::Investidor)
     elseif agente.func == "neutro"
         return w
     elseif agente.func == "propenso"
-        return (w)^2
+        return (w)^1.5
     else
         return error("Agente com função diferente de avesso/neutro/propenso")
     end
@@ -66,11 +66,9 @@ function agent_step!(agente::Investidor, model::ABM)
             util_stock = exp((cash-preco_medio(model)) * (preco_medio(model)*(stock+1)))
         end    
         if util_cash > util_stock
-            println("Agente: $(agente.id) Vendeu 1 ação ($(agente.func)))")
             agente.cash += preco_medio(model)
             agente.stock -= 1
         elseif util_stock > util_cash
-            println("Agente: $(agente.id) Comprou 1 ação ($(agente.func)))")
             agente.cash -= preco_medio(model)
             agente.stock += 1
         else
@@ -171,3 +169,7 @@ function vendedores(model::ABM)
 end
 global l = 0.00001
 global ß = 100
+
+model = initialize_model(n_agent=1200)
+
+df, _ = run!(model, agent_step!, model_step, 100, adata=[:cash, :stock, :preco, :util])
